@@ -1,25 +1,62 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, TextInput } from 'react-native';
+import { NavigationContainer, useFocusEffect } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import * as Location from 'expo-location';
 
-// Endereço do seu backend local (mantenha o seu IP correto do Wi-Fi)
 const BACKEND_URL = 'http://192.168.1.203:3000/api/historico';
-
-// 🌐 API Oficial e ativa conectada direto com o portal Dados Recife
 const DADOS_RECIFE_URL = 'https://dados.recife.pe.gov.br/api/3/action/datastore_search?resource_id=bab62397-be40-436a-bc9c-fe7c7bacc0c6&limit=15';
 
 const Tab = createBottomTabNavigator();
 
 // =========================================================================
-// TELA 1: PONTOS DE COLETA (Consome API União Recife + GPS + POST)
+// 🔑 TELA DE LOGIN INTEGRADA (Nativa no App.js)
 // =========================================================================
-function EcoestacoesScreen() {
+function LoginScreen({ onLogin }) {
+  const [inputNome, setInputNome] = useState('');
+
+  const handleAcessar = () => {
+    if (inputNome.trim() === '') {
+      Alert.alert('Atenção', 'Por favor, insira seu nome para acessar o aplicativo.');
+      return;
+    }
+    onLogin(inputNome.trim());
+  };
+
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#eef5ed', padding: 20 }}>
+      <View style={{ width: '100%', maxWidth: 340, backgroundColor: '#fff', padding: 25, borderRadius: 12, elevation: 4 }}>
+        <Text style={{ fontSize: 38, textAlign: 'center', marginBottom: 10 }}>♻️</Text>
+        <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#008000', textAlign: 'center', marginBottom: 4 }}>EcoRecife</Text>
+        <Text style={{ fontSize: 13, color: '#666', textAlign: 'center', marginBottom: 20 }}>Insira seu nome para acessar o aplicativo:</Text>
+        
+        <Text style={{ fontSize: 14, fontWeight: '700', color: '#444', marginBottom: 6 }}>Seu Nome:</Text>
+        <TextInput
+          style={{ height: 44, backgroundColor: '#f9f9f9', borderRadius: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: '#ccc', fontSize: 16, color: '#333', marginBottom: 20 }}
+          placeholder="Ex: Aline Souza"
+          placeholderTextColor="#999"
+          value={inputNome}
+          onChangeText={setInputNome}
+        />
+
+        <TouchableOpacity 
+          style={{ backgroundColor: '#008000', paddingVertical: 12, borderRadius: 6, alignItems: 'center' }} 
+          onPress={handleAcessar}
+        >
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>Entrar no Aplicativo</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// =========================================================================
+// TELA 1: PONTOS DE COLETA (Consome API + GPS + Envio de Check-in + Logout)
+// =========================================================================
+function EcoestacoesScreen({ usuarioLogado, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [locais, setLocais] = useState([]);
 
-  // Busca os dados em tempo real da Prefeitura de Recife
   useEffect(() => {
     fetch(DADOS_RECIFE_URL)
       .then((response) => response.json())
@@ -36,41 +73,32 @@ function EcoestacoesScreen() {
       });
   }, []);
 
-  // Realiza o processo de geolocalização e envia os dados para o Backend
   const handleCheckIn = async (item) => {
-    let latitude = -8.05428; // Coordenadas de backup (Recife Centro) caso o GPS falhe dentro de casa
+    let latitude = -8.05428; 
     let longitude = -34.8813;
 
     try {
-      // Pede permissão para acessar a localização
       let { status } = await Location.requestForegroundPermissionsAsync();
-      
       if (status === 'granted') {
-        // Tenta pegar a última posição conhecida (rápido e não trava)
         let currentLocation = await Location.getLastKnownPositionAsync({});
-        
-        // Se não houver posição recente, tenta ler o sensor de forma rápida
         if (!currentLocation) {
-          currentLocation = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Lowest,
-          });
+          currentLocation = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest });
         }
-
         if (currentLocation && currentLocation.coords) {
           latitude = currentLocation.coords.latitude;
           longitude = currentLocation.coords.longitude;
         }
       }
     } catch (gpsError) {
-      console.log("Usando localização padrão de teste:", gpsError);
+      console.log("Usando localização padrão:", gpsError);
     }
 
-    // Dispara o POST para o seu servidor local
     try {
       const response = await fetch(BACKEND_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          usuario: usuarioLogado, 
           userLatitude: latitude,
           userLongitude: longitude,
           ecoestacaoNome: item.endereco || 'Ponto sem endereço', 
@@ -79,9 +107,9 @@ function EcoestacoesScreen() {
       });
 
       if (response.ok) {
-        Alert.alert('Sucesso!', `Check-in salvo no ponto: ${item.bairro}`);
+        Alert.alert('Sucesso!', `${usuarioLogado}, seu check-in foi salvo no ponto: ${item.bairro}`);
       } else {
-        Alert.alert('Erro', 'O servidor backend rejeitou o salvamento dos dados.');
+        Alert.alert('Erro', 'O servidor backend rejeitou o salvamento.');
       }
     } catch (error) {
       console.error(error);
@@ -100,6 +128,15 @@ function EcoestacoesScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.welcomeRow}>
+        <View style={styles.welcomeBadgeRow}>
+          <Text style={styles.welcomeText}>👤 Conectado como: <Text style={{fontWeight: 'bold'}}>{usuarioLogado}</Text></Text>
+        </View>
+        <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
+          <Text style={styles.logoutButtonText}>🚪 Sair</Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={locais}
         keyExtractor={(item, index) => index.toString()}
@@ -121,18 +158,20 @@ function EcoestacoesScreen() {
 }
 
 // =========================================================================
-// TELA 2: HISTÓRICO (Consome seu Backend via GET e converte Lat/Lon em Texto)
+// TELA 2: HISTÓRICO (Lista os check-ins normalmente sem apagar)
 // =========================================================================
-function HistoricoScreen({ navigation }) {
+function HistoricoScreen({ usuarioLogado }) {
   const [historico, setHistorico] = useState([]);
+  const [loadingHistorico, setLoadingHistorico] = useState(false);
 
-  // Recarrega os registros salvos toda vez que o usuário abre a aba
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
+  useFocusEffect(
+    useCallback(() => {
+      setLoadingHistorico(true);
+
+      // 🔄 Apenas faz o GET para buscar e renderizar o histórico na tela
       fetch(BACKEND_URL)
         .then((response) => response.json())
         .then(async (data) => {
-          // Converte as coordenadas de latitude/longitude salvas no banco em um endereço legível
           const historicoComEndereco = await Promise.all(
             data.map(async (item) => {
               try {
@@ -140,48 +179,60 @@ function HistoricoScreen({ navigation }) {
                   latitude: Number(item.userLatitude),
                   longitude: Number(item.userLongitude),
                 });
-
                 if (resultado && resultado.length > 0) {
                   const local = resultado[0];
-                  // Une o nome da rua, número (se houver) e o distrito/bairro encontrado pelo GPS
                   item.enderecoFormatado = `${local.street || 'Rua não identificada'}, ${local.streetNumber || 'S/N'} - ${local.district || ''}`;
                 } else {
                   item.enderecoFormatado = 'Endereço não localizado pelo GPS';
                 }
               } catch (e) {
-                // Caso falhe ou esteja sem internet para buscar o mapa, mostra as coordenadas padrão
                 item.enderecoFormatado = `Lat: ${item.userLatitude} | Lon: ${item.userLongitude}`;
               }
               return item;
             })
           );
           setHistorico(historicoComEndereco);
+          setLoadingHistorico(false);
         })
-        .catch((err) => console.log(err));
-    });
-    return unsubscribe;
-  }, [navigation]);
+        .catch((err) => {
+          console.log("Erro ao buscar histórico:", err);
+          setLoadingHistorico(false);
+        });
+    }, [])
+  );
+
+  if (loadingHistorico) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#008000" />
+        <Text style={{ marginTop: 10 }}>Carregando histórico...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
+      <View style={[styles.welcomeBadge, { backgroundColor: '#e2f0d9', borderColor: '#008000' }]}>
+        <Text style={[styles.welcomeText, { color: '#008000', fontWeight: '600' }]}>📋 Histórico de de visitas: {usuarioLogado}</Text>
+      </View>
+
       {historico.length === 0 ? (
         <View style={styles.center}>
-          <Text>Nenhum check-in registrado no histórico.</Text>
+          <Text>Nenhum check-in registrado neste histórico.</Text>
         </View>
       ) : (
         <FlatList
           data={historico}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item, index) => index.toString()}
           renderItem={({ item }) => (
             <View style={styles.cardHistorico}>
               <Text style={styles.titleHistorico}>Local: {item.ecoestacaoNome}</Text>
-              <Text style={styles.text}>Bairro: {item.ecoestacaoBairro}</Text>
+              <Text style={styles.text}>Bairro do Ponto: {item.ecoestacaoBairro}</Text>
+              <Text style={[styles.text, { fontWeight: '600', color: '#555' }]}>👤 Por: {item.usuario || usuarioLogado}</Text>
               
-              {/* Exibição do endereço convertido a partir da geolocalização do aparelho */}
               <Text style={[styles.text, { fontWeight: 'bold', color: '#008000', marginTop: 4 }]}>
-                📍 Onde você estava: {item.enderecoFormatado}
+                📍 Onde estava: {item.enderecoFormatado}
               </Text>
-              
               <Text style={styles.date}>{new Date(item.timestamp).toLocaleString('pt-BR')}</Text>
             </View>
           )}
@@ -192,9 +243,27 @@ function HistoricoScreen({ navigation }) {
 }
 
 // =========================================================================
-// NAVEGAÇÃO POR ABAS CORRIGIDA (Utiliza Emojis nativos para evitar quebra)
+// 🚀 ORQUESTRADOR PRINCIPAL NATIVO BLINDADO (Gerencia o Logout + DELETE)
 // =========================================================================
 export default function App() {
+  const [usuario, setUsuario] = useState(null);
+
+  // 🚪 Função unificada que limpa o banco e volta para o login
+  const handleLogoutDoUsuario = async () => {
+    try {
+      // 🧹 Envia o comando DELETE para esvaziar o JSON do backend
+      await fetch(BACKEND_URL, { method: 'DELETE' });
+    } catch (e) {
+      console.log("Erro ao limpar banco no logout, mas deslogando assim mesmo:", e);
+    }
+    // 👤 Desloga o usuário e volta para a tela de login
+    setUsuario(null);
+  };
+
+  if (!usuario) {
+    return <LoginScreen onLogin={(nome) => setUsuario(nome)} />;
+  }
+
   return (
     <NavigationContainer>
       <Tab.Navigator 
@@ -208,8 +277,13 @@ export default function App() {
           }
         })}
       >
-        <Tab.Screen name="Ecoestações" component={EcoestacoesScreen} options={{ title: 'Pontos de Coleta' }} />
-        <Tab.Screen name="Histórico" component={HistoricoScreen} options={{ title: 'Histórico de Visitas' }} />
+        <Tab.Screen name="Ecoestações" options={{ title: 'Pontos de Coleta' }}>
+          {() => <EcoestacoesScreen usuarioLogado={usuario} onLogout={handleLogoutDoUsuario} />}
+        </Tab.Screen>
+        
+        <Tab.Screen name="Histórico" options={{ title: 'Histórico de Visitas' }}>
+          {() => <HistoricoScreen usuarioLogado={usuario} />}
+        </Tab.Screen>
       </Tab.Navigator>
     </NavigationContainer>
   );
@@ -218,6 +292,12 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5', padding: 10 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  welcomeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  welcomeBadgeRow: { backgroundColor: '#fff', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#e0e0e0', flex: 1, marginRight: 8, elevation: 1 },
+  welcomeBadge: { backgroundColor: '#fff', padding: 10, borderRadius: 6, marginBottom: 12, borderWidth: 1, borderColor: '#e0e0e0', elevation: 1 },
+  welcomeText: { fontSize: 13, color: '#008000', textAlign: 'center' },
+  logoutButton: { backgroundColor: '#d9534f', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 6, elevation: 1, justifyContent: 'center', alignItems: 'center' },
+  logoutButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
   card: { backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 12, elevation: 2 },
   cardHistorico: { backgroundColor: '#e2f0d9', padding: 15, borderRadius: 8, marginBottom: 12, borderLeftWidth: 5, borderLeftColor: '#008000' },
   title: { fontSize: 17, fontWeight: 'bold', color: '#333' },
