@@ -4,19 +4,22 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import * as Location from 'expo-location';
 
-// Endereço do seu backend local
+// Endereço do seu backend local (mantenha o seu IP correto do Wi-Fi)
 const BACKEND_URL = 'http://192.168.1.203:3000/api/historico';
 
-// 🌐 Nova API Real, Ativa e Conectada direto com a Prefeitura de Recife!
+// 🌐 API Oficial e ativa conectada direto com o portal Dados Recife
 const DADOS_RECIFE_URL = 'https://dados.recife.pe.gov.br/api/3/action/datastore_search?resource_id=bab62397-be40-436a-bc9c-fe7c7bacc0c6&limit=15';
 
 const Tab = createBottomTabNavigator();
 
+// =========================================================================
+// TELA 1: PONTOS DE COLETA (Consome API União Recife + GPS + POST)
+// =========================================================================
 function EcoestacoesScreen() {
   const [loading, setLoading] = useState(true);
   const [locais, setLocais] = useState([]);
 
-  // Busca dados dinâmicos da API da Prefeitura
+  // Busca os dados em tempo real da Prefeitura de Recife
   useEffect(() => {
     fetch(DADOS_RECIFE_URL)
       .then((response) => response.json())
@@ -33,26 +36,36 @@ function EcoestacoesScreen() {
       });
   }, []);
 
+  // Realiza o processo de geolocalização e envia os dados para o Backend
   const handleCheckIn = async (item) => {
-    let latitude = -8.05428; 
+    let latitude = -8.05428; // Coordenadas de backup (Recife Centro) caso o GPS falhe dentro de casa
     let longitude = -34.8813;
 
     try {
+      // Pede permissão para acessar a localização
       let { status } = await Location.requestForegroundPermissionsAsync();
+      
       if (status === 'granted') {
+        // Tenta pegar a última posição conhecida (rápido e não trava)
         let currentLocation = await Location.getLastKnownPositionAsync({});
+        
+        // Se não houver posição recente, tenta ler o sensor de forma rápida
         if (!currentLocation) {
-          currentLocation = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest });
+          currentLocation = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Lowest,
+          });
         }
-        if (currentLocation) {
+
+        if (currentLocation && currentLocation.coords) {
           latitude = currentLocation.coords.latitude;
           longitude = currentLocation.coords.longitude;
         }
       }
-    } catch (e) {
-      console.log("Usando localização padrão de Recife.");
+    } catch (gpsError) {
+      console.log("Usando localização padrão de teste:", gpsError);
     }
 
+    // Dispara o POST para o seu servidor local
     try {
       const response = await fetch(BACKEND_URL, {
         method: 'POST',
@@ -60,18 +73,19 @@ function EcoestacoesScreen() {
         body: JSON.stringify({
           userLatitude: latitude,
           userLongitude: longitude,
-          ecoestacaoNome: item.endereco, // Usando o campo de endereço como identificador do local
-          ecoestacaoBairro: item.bairro
+          ecoestacaoNome: item.endereco || 'Ponto sem endereço', 
+          ecoestacaoBairro: item.bairro || 'Recife'
         })
       });
 
       if (response.ok) {
         Alert.alert('Sucesso!', `Check-in salvo no ponto: ${item.bairro}`);
       } else {
-        Alert.alert('Erro', 'O servidor backend rejeitou os dados.');
+        Alert.alert('Erro', 'O servidor backend rejeitou o salvamento dos dados.');
       }
     } catch (error) {
-      Alert.alert('Erro', 'Verifique se o seu backend está ativo.');
+      console.error(error);
+      Alert.alert('Erro de Conexão', 'Verifique se o seu backend está rodando no terminal.');
     }
   };
 
@@ -107,11 +121,12 @@ function EcoestacoesScreen() {
 }
 
 // =========================================================================
-// TELA 2: HISTÓRICO
+// TELA 2: HISTÓRICO (Consome seu Backend via GET)
 // =========================================================================
 function HistoricoScreen({ navigation }) {
   const [historico, setHistorico] = useState([]);
 
+  // Recarrega os registros salvos toda vez que o usuário abre a aba
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       fetch(BACKEND_URL)
@@ -148,7 +163,7 @@ function HistoricoScreen({ navigation }) {
 }
 
 // =========================================================================
-// NAVEGAÇÃO
+// NAVEGAÇÃO POR ABAS CORRIGIDA (Utiliza Emojis nativos para evitar quebra)
 // =========================================================================
 export default function App() {
   return (
@@ -160,7 +175,7 @@ export default function App() {
           headerTitleAlign: 'center',
           tabBarIcon: ({ size }) => {
             let iconName = route.name === 'Ecoestações' ? '♻️' : '📜';
-            return <Text style={{ fontSize: size }}>iconName</Text>;
+            return <Text style={{ fontSize: size }}>{iconName}</Text>;
           }
         })}
       >
