@@ -121,7 +121,7 @@ function EcoestacoesScreen() {
 }
 
 // =========================================================================
-// TELA 2: HISTÓRICO (Consome seu Backend via GET)
+// TELA 2: HISTÓRICO (Consome seu Backend via GET e converte Lat/Lon em Texto)
 // =========================================================================
 function HistoricoScreen({ navigation }) {
   const [historico, setHistorico] = useState([]);
@@ -131,7 +131,32 @@ function HistoricoScreen({ navigation }) {
     const unsubscribe = navigation.addListener('focus', () => {
       fetch(BACKEND_URL)
         .then((response) => response.json())
-        .then((data) => setHistorico(data))
+        .then(async (data) => {
+          // Converte as coordenadas de latitude/longitude salvas no banco em um endereço legível
+          const historicoComEndereco = await Promise.all(
+            data.map(async (item) => {
+              try {
+                let resultado = await Location.reverseGeocodeAsync({
+                  latitude: Number(item.userLatitude),
+                  longitude: Number(item.userLongitude),
+                });
+
+                if (resultado && resultado.length > 0) {
+                  const local = resultado[0];
+                  // Une o nome da rua, número (se houver) e o distrito/bairro encontrado pelo GPS
+                  item.enderecoFormatado = `${local.street || 'Rua não identificada'}, ${local.streetNumber || 'S/N'} - ${local.district || ''}`;
+                } else {
+                  item.enderecoFormatado = 'Endereço não localizado pelo GPS';
+                }
+              } catch (e) {
+                // Caso falhe ou esteja sem internet para buscar o mapa, mostra as coordenadas padrão
+                item.enderecoFormatado = `Lat: ${item.userLatitude} | Lon: ${item.userLongitude}`;
+              }
+              return item;
+            })
+          );
+          setHistorico(historicoComEndereco);
+        })
         .catch((err) => console.log(err));
     });
     return unsubscribe;
@@ -151,8 +176,12 @@ function HistoricoScreen({ navigation }) {
             <View style={styles.cardHistorico}>
               <Text style={styles.titleHistorico}>Local: {item.ecoestacaoNome}</Text>
               <Text style={styles.text}>Bairro: {item.ecoestacaoBairro}</Text>
-              <Text style={styles.text}>Sua Lat: {item.userLatitude}</Text>
-              <Text style={styles.text}>Sua Lon: {item.userLongitude}</Text>
+              
+              {/* Exibição do endereço convertido a partir da geolocalização do aparelho */}
+              <Text style={[styles.text, { fontWeight: 'bold', color: '#008000', marginTop: 4 }]}>
+                📍 Onde você estava: {item.enderecoFormatado}
+              </Text>
+              
               <Text style={styles.date}>{new Date(item.timestamp).toLocaleString('pt-BR')}</Text>
             </View>
           )}
