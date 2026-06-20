@@ -1,0 +1,30 @@
+[
+  {
+    "tipo": "Ecoestação",
+    "nome": "Ecoestação Graças",
+    "localizacao": "Rua Dr. Arthur de Sá, s/n - Graças",
+    "bairro": "Graças",
+    "resíduo_reciclavel": "Sim"
+  },
+  {
+    "tipo": "Ecoestação",
+    "nome": "Ecoestação Torre",
+    "localizacao": "Rua Josias de Albuquerque, s/n - Torre",
+    "bairro": "Torre",
+    "resíduo_reciclavel": "Sim"
+  },
+  {
+    "tipo": "Ecoestação",
+    "nome": "Ecoestação Campo Grande",
+    "localizacao": "Estrada de Belém, s/n - Campo Grande",
+    "bairro": "Campo Grande",
+    "resíduo_reciclavel": "Sim"
+  },
+  {
+    "tipo": "Econúcleo",
+    "nome": "Econúcleo Jaqueira",
+    "localizacao": "Parque da Jaqueira - Jaqueira",
+    "bairro": "Jaqueira",
+    "resíduo_reciclavel": "Sim"
+  }
+]
